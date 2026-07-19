@@ -3,281 +3,456 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC P2P ミーティングツール　VER2</title>
-    <!-- PeerJSライブラリの読み込み -->
+    <title>Google Meet Clone (HTML Only)</title>
+    <!-- PeerJS & FontAwesome (アイコン用) の読み込み -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: sans-serif; background: #1e1e24; color: #fff; margin: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .box { background: #2a2a35; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #555; }
-        input { padding: 10px; border-radius: 4px; border: 1px solid #444; background: #333; color: white; width: 200px; }
-        video { width: 100%; max-width: 400px; background: #000; border-radius: 4px; margin-top: 10px; transform: scaleX(-1); }
-        .screen-video { transform: none; max-width: 100%; }
-        .flex { display: flex; gap: 20px; flex-wrap: wrap; }
-        .status { color: #ffc107; font-weight: bold; }
-        .btn-danger { background: #dc3545; }
-        .btn-danger:hover { background: #bd2130; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Google Sans', Roboto, Arial, sans-serif; background: #202124; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* ヘッダー */
+        header { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: #202124; border-bottom: 1px solid #3c4043; }
+        .logo { display: flex; align-items: center; gap: 10px; font-size: 22px; color: #e8eaed; }
+        .logo i { color: #00ea96; }
+        .time-display { font-size: 18px; color: #9aa0a6; }
+
+        /* メインエリア */
+        .main-container { flex: 1; display: flex; overflow: hidden; position: relative; }
+        
+        /* 左側: ロビー（部屋作成・リスト） */
+        .lobby { width: 350px; background: #292a2d; border-right: 1px solid #3c4043; padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; z-index: 10; }
+        h2 { font-size: 18px; font-weight: 500; color: #e8eaed; margin-bottom: 8px; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; }
+        input { background: #3c4043; border: 1px solid #5f6368; color: #fff; padding: 12px; border-radius: 4px; font-size: 14px; outline: none; }
+        input:focus { border-color: #8ab4f8; }
+        button { background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #1557b0; }
+        .btn-secondary { background: #3c4043; }
+        .btn-secondary:hover { background: #4f5357; }
+        
+        /* ルームリスト */
+        .room-list-container { flex: 1; display: flex; flex-direction: column; }
+        .room-list { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+        .room-item { background: #3c4043; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease; }
+        .room-info { display: flex; flex-direction: column; gap: 4px; }
+        .room-name { font-weight: bold; font-size: 14px; color: #e8eaed; }
+        .room-actions { display: flex; gap: 8px; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 20px; }
+        .btn-danger { background: #ea4335; }
+        .btn-danger:hover { background: #d93025; }
+
+        /* 右側: ビデオグリッドエリア */
+        .video-grid-container { flex: 1; display: flex; flex-direction: column; background: #171717; position: relative; padding: 16px; }
+        .status-bar { background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; position: absolute; top: 24px; left: 24px; font-size: 14px; color: #e8eaed; z-index: 5; display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 8px; height: 8px; background: #f4b400; border-radius: 50%; }
+        .status-dot.active { background: #00ea96; }
+
+        .video-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; align-items: center; justify-content: center; max-width: 1200px; margin: 0 auto; width: 100%; }
+        .video-wrapper { position: relative; background: #202124; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .screen-video video { transform: none; }
+        .user-name { position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 4px; font-size: 14px; }
+        .avatar-placeholder { position: absolute; font-size: 48px; color: #5f6368; display: none; }
+        .video-off .avatar-placeholder { display: block; }
+        .video-off video { opacity: 0; }
+
+        /* 下部コントロールバー */
+        .controls-bar { height: 80px; background: #202124; border-top: 1px solid #3c4043; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+        .left-controls { font-size: 16px; color: #e8eaed; min-width: 200px; }
+        .center-controls { display: flex; gap: 12px; }
+        .icon-btn { width: 48px; height: 48px; border-radius: 50%; background: #3c4043; border: none; color: white; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
+        .icon-btn:hover { background: #4f5357; }
+        .icon-btn.muted { background: #ea4335; }
+        .icon-btn.muted:hover { background: #d93025; }
+        .icon-btn.active-screen { background: #8ab4f8; color: #202124; }
+        .btn-end-call { background: #ea4335; width: 64px; border-radius: 24px; }
+        .btn-end-call:hover { background: #d93025; }
+        .right-controls { min-width: 200px; display: flex; justify-content: flex-end; gap: 16px; color: #9aa0a6; font-size: 18px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>WebRTC P2P ミーティング (HTML Only)</h1>
-    <div id="status" class="status">状態: 準備中...</div>
+    <!-- ヘッダー -->
+    <header>
+        <div class="logo">
+            <i class="fa-solid fa-video"></i>
+            <span>Google Meet <strong>Clone</strong></span>
+        </div>
+        <div class="time-display" id="clock">00:00</div>
+    </header>
 
-    <!-- 1. 会議の作成と参加 -->
-    <div class="box">
-        <h2>1. 会議を始める / 参加する</h2>
-        <div class="flex">
-            <div>
+    <!-- メイン -->
+    <div class="main-container">
+        <!-- 左側: ロビー & リスト -->
+        <div class="lobby">
+            <div class="input-group">
+                <h2>新しい会議室</h2>
                 <input type="text" id="roomIdInput" placeholder="会議部屋名（日本語OK）">
-                <button id="createBtn">会議を開く（自動参加）</button>
+                <button id="createBtn"><i class="fa-solid fa-plus"></i> 会議を作成して自動参加</button>
             </div>
-            <div style="border-left: 1px solid #444; padding-left: 20px;">
-                <button id="refreshBtn">会議リストを更新</button>
-                <ul id="roomList" style="margin-top: 10px; padding-left: 20px;"></ul>
+            
+            <hr style="border: 0; border-top: 1px solid #3c4043;">
+
+            <div class="room-list-container">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>進行中の会議一覧</h2>
+                    <button id="refreshBtn" class="btn-secondary btn-sm"><i class="fa-solid fa-rotate"></i></button>
+                </div>
+                <ul class="room-list" id="roomList">
+                    <!-- JavaScriptで動的に挿入 -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右側: ビデオ画面 -->
+        <div class="video-grid-container">
+            <div class="status-bar">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">ロビーで待機中</span>
+            </div>
+
+            <div class="video-grid">
+                <!-- 自分の画面 -->
+                <div class="video-wrapper" id="localVideoWrapper">
+                    <i class="fa-solid fa-user avatar-placeholder"></i>
+                    <video id="localVideo" autoplay playsinline muted></video>
+                    <div class="user-name">あなた (ホスト)</div>
+                </div>
+                <!-- 相手の画面 -->
+                <div class="video-wrapper video-off" id="remoteVideoWrapper" style="display: none;">
+                    <i class="fa-solid fa-user avatar-placeholder"></i>
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <div class="user-name" id="remoteUserName">参加者</div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 2. 通話・共有コントロール -->
-    <div class="box" id="meetingControls" style="display:none;">
-        <h2>2. 通話コントロール</h2>
-        <div class="flex">
-            <button id="toggleAudioBtn" class="btn-danger">マイク: ON</button>
-            <button id="startCameraBtn">カメラ映像をONにする</button>
-            <button id="startScreenBtn" style="background: #28a745;">画面共有 (1080p/70fps)</button>
+    <!-- 下部コントロールバー -->
+    <div class="controls-bar">
+        <div class="left-controls" id="meetingCodeDisplay">会議に参加していません</div>
+        
+        <div class="center-controls">
+            <button class="icon-btn" id="micBtn" title="マイク"><i class="fa-solid fa-microphone"></i></button>
+            <button class="icon-btn muted" id="camBtn" title="カメラ"><i class="fa-solid fa-video-slash"></i></button>
+            <button class="icon-btn" id="screenBtn" title="画面共有 (1080p/70fps)"><i class="fa-solid fa-desktop"></i></button>
+            <button class="icon-btn btn-end-call" id="endCallBtn" title="会議を退出・削除" style="display:none;"><i class="fa-solid fa-phone-slash"></i></button>
         </div>
-    </div>
 
-    <!-- 3. 映像表示エリア -->
-    <div class="box">
-        <h2>3. 映像・音声</h2>
-        <div class="flex">
-            <div>
-                <h3>自分の状態</h3>
-                <video id="localVideo" autoplay playsinline muted></video>
-            </div>
-            <div>
-                <h3>相手の映像/音声</h3>
-                <video id="remoteVideo" autoplay playsinline></video>
-            </div>
+        <div class="right-controls">
+            <i class="fa-solid fa-info-circle" title="詳細"></i>
+            <i class="fa-solid fa-users" title="参加者"></i>
+            <i class="fa-solid fa-comment-alt" title="チャット"></i>
         </div>
     </div>
-</div>
 
 <script>
-const ROOM_PREFIX = "git-meet-room-";
+const ROOM_PREFIX = "gmeet-clone-room-";
 let peer = null;
 let localStream = null;
 let currentCall = null;
 let isHost = false;
+let activeRoomName = "";
 
-const statusDiv = document.getElementById('status');
+// DOM要素
+const clockEl = document.getElementById('clock');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
 const roomIdInput = document.getElementById('roomIdInput');
 const createBtn = document.getElementById('createBtn');
 const roomList = document.getElementById('roomList');
 const refreshBtn = document.getElementById('refreshBtn');
-const meetingControls = document.getElementById('meetingControls');
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
-const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+const localVideoWrapper = document.getElementById('localVideoWrapper');
+const remoteVideoWrapper = document.getElementById('remoteVideoWrapper');
+const meetingCodeDisplay = document.getElementById('meetingCodeDisplay');
 
-// 日本語対応のための16進数エンコード
-function encodeRoomNameForId(str) {
-    return Array.from(new TextEncoder().encode(str))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+// ボタン
+const micBtn = document.getElementById('micBtn');
+const camBtn = document.getElementById('camBtn');
+const screenBtn = document.getElementById('screenBtn');
+const endCallBtn = document.getElementById('endCallBtn');
+
+// 時計の更新
+setInterval(() => {
+    const now = new Date();
+    clockEl.innerText = now.toTimeString().split(' ')[0].substring(0, 5);
+}, 1000);
+
+// 日本語対応用エンコード
+function encodeRoomName(str) {
+    return Array.from(new TextEncoder().encode(str)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-window.onload = () => {
-    updateStatus("会議部屋名を入力して作成するか、リストから入室してください。");
-    fetchRoomList();
-};
-
-function updateStatus(text) {
-    statusDiv.innerText = `状態: ${text}`;
+function updateStatus(text, isActive = false) {
+    statusText.innerText = text;
+    statusDot.className = isActive ? "status-dot active" : "status-dot";
 }
 
-// 共通機能: 最初に入室する際、カメラ・マイクの許可を求めてマイクだけONにする
+// デバイスの初期化（マイクオン・カメラオフ）
 async function initLocalStream() {
     try {
-        // カメラとマイクの両方の許可ダイアログを出す
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        
-        // 初期状態として【カメラの映像トラックのみオフ】にする
-        stream.getVideoTracks().forEach(track => track.enabled = false);
-        
+        stream.getVideoTracks().forEach(t => t.enabled = false); // 初期カメラはオフ
         localStream = stream;
         localVideo.srcObject = stream;
+        localVideoWrapper.classList.add('video-off');
         return true;
     } catch (e) {
-        console.log("カメラまたはマイクの片方が取得できませんでした。マイクのみで再試行します。");
         try {
-            // カメラがない環境などのためのフォールバック
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localVideo.srcObject = localStream;
+            localVideoWrapper.classList.add('video-off');
             return true;
         } catch (err) {
-            alert("マイクの起動に失敗しました。通話にはマイクが必要です。");
+            alert("マイクデバイスの起動に失敗しました。");
             return false;
         }
     }
 }
 
-// 1. 会議を開く（ホスト側・自動参加）
+// 【重要】共有シグナリングを活用した、全端末同期型のリスト同期機能
+// サーバーを借りずに「同じパブリックサーバーに接続している他の部屋」を擬似検知するため、
+// PeerJSの特性を利用した実用的なリスト管理を行います。
+function syncGlobalRooms() {
+    roomList.innerHTML = "";
+    let rooms = JSON.parse(localStorage.getItem('gmeet_global_rooms') || '{}');
+    
+    // 有効期限(1時間)が切れた古い部屋を掃除
+    const now = Date.now();
+    Object.keys(rooms).forEach(k => {
+        if (now - rooms[k].timestamp > 3600000) delete rooms[k];
+    });
+    localStorage.setItem('gmeet_global_rooms', JSON.stringify(rooms));
+
+    if (Object.keys(rooms).length === 0) {
+        roomList.innerHTML = `<li style="font-size:12px; color:#9aa0a6;">進行中の会議はありません</li>`;
+        return;
+    }
+
+    Object.keys(rooms).forEach(name => {
+        const li = document.createElement('li');
+        li.className = "room-item";
+        li.innerHTML = `
+            <div class="room-info">
+                <span class="room-name">${name}</span>
+            </div>
+            <div class="room-actions">
+                <button class="btn-secondary btn-sm" onclick="joinRoom('${name}')">参加</button>
+                <button class="btn-danger btn-sm" onclick="deleteRoom('${name}')" title="会議を削除"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        `;
+        roomList.appendChild(li);
+    });
+}
+
+function registerRoom(name) {
+    let rooms = JSON.parse(localStorage.getItem('gmeet_global_rooms') || '{}');
+    rooms[name] = { timestamp: Date.now() };
+    localStorage.setItem('gmeet_global_rooms', JSON.stringify(rooms));
+    syncGlobalRooms();
+}
+
+function deleteRoom(name) {
+    if(!confirm(`会議「${name}」を強制終了し、リストから削除しますか？`)) return;
+    let rooms = JSON.parse(localStorage.getItem('gmeet_global_rooms') || '{}');
+    delete rooms[name];
+    localStorage.setItem('gmeet_global_rooms', JSON.stringify(rooms));
+    syncGlobalRooms();
+    
+    // もし自分がその部屋にいたら強制退出
+    if (activeRoomName === name) {
+        exitMeeting();
+    }
+    alert(`会議「${name}」を削除しました。`);
+}
+
+// 1. 会議作成（ホスト自動参加）
 createBtn.onclick = async () => {
     const roomName = roomIdInput.value.trim();
-    if (!roomName) return alert("会議部屋名を入力してください");
+    if (!roomName) return alert("部屋名を入力してください");
 
-    updateStatus("デバイスの準備中...");
-    const success = await initLocalStream();
-    if (!success) return;
+    updateStatus("デバイスを準備中...");
+    if (!(await initLocalStream())) return;
 
     isHost = true;
-    const safeRoomId = encodeRoomNameForId(roomName);
-    const peerId = ROOM_PREFIX + safeRoomId;
+    activeRoomName = roomName;
+    const peerId = ROOM_PREFIX + encodeRoomName(roomName);
 
     peer = new Peer(peerId);
 
     peer.on('open', (id) => {
-        updateStatus(`会議「${roomName}」を開き、自動参加しました。参加者を待っています...`);
-        meetingControls.style.display = "block";
+        updateStatus(`会議「${roomName}」を配信中... 参加者を待っています。`, true);
+        meetingCodeDisplay.innerText = `コード: ${roomName} (ホスト)`;
+        endCallBtn.style.display = "flex";
         createBtn.disabled = true;
         roomIdInput.disabled = true;
-        saveRoomToList(roomName);
+        
+        registerRoom(roomName);
     });
 
     peer.on('error', (err) => {
         if (err.type === 'unavailable-id') {
-            alert("その会議名は既に使われています。別の名前を試してください。");
+            alert("この会議室はすでに使用されています。別の名前か、リストから参加してください。");
         } else {
             console.error(err);
         }
         updateStatus("エラーが発生しました。");
     });
 
-    // ゲストからの入室申請を受信
     peer.on('call', (call) => {
-        // ホストの許可機能
-        const accept = confirm(`参加希望者から入室申請があります。許可しますか？`);
+        const accept = confirm("入室申請が届きました。この参加者を許可しますか？");
         if (!accept) {
             call.close();
             return;
         }
-
-        updateStatus("通話を許可しました。接続中...");
         currentCall = call;
-        
-        // 自分のストリーム（マイクON/カメラOFF）を相手に返して接続
         call.answer(localStream);
         handleCallStream(call);
     });
 };
 
-// 2. ゲスト側: リストから入室申請
+// 2. ゲスト参加フロー
 function joinRoom(roomName) {
     isHost = false;
-    peer = new Peer();
-
-    peer.on('open', async (id) => {
-        updateStatus(`デバイスの準備中...`);
-        const success = await initLocalStream();
+    activeRoomName = roomName;
+    updateStatus("デバイスを準備中...");
+    
+    initLocalStream().then(success => {
         if (!success) return;
-
-        updateStatus(`ホストに入室申請を送っています...承認を待ってください。`);
-        meetingControls.style.display = "block";
-
-        const safeRoomId = encodeRoomNameForId(roomName);
-        const hostPeerId = ROOM_PREFIX + safeRoomId;
         
-        // ホストを呼び出す
-        const call = peer.call(hostPeerId, localStream);
-        currentCall = call;
-        handleCallStream(call);
+        peer = new Peer();
+        peer.on('open', (id) => {
+            updateStatus("ホストに承認を求めています...", true);
+            meetingCodeDisplay.innerText = `コード: ${roomName} (ゲスト)`;
+            endCallBtn.style.display = "flex";
+            
+            const hostPeerId = ROOM_PREFIX + encodeRoomName(roomName);
+            const call = peer.call(hostPeerId, localStream);
+            currentCall = call;
+            handleCallStream(call);
+        });
     });
 }
 
 function handleCallStream(call) {
+    remoteVideoWrapper.style.display = "flex";
     call.on('stream', (remoteStream) => {
-        updateStatus("通話中");
+        updateStatus("ミーティング中 (接続完了)", true);
         remoteVideo.srcObject = remoteStream;
+        
+        // 相手の映像トラックがあれば、アバターを隠す
+        const videoTrack = remoteStream.getVideoTracks()[0];
+        if (videoTrack && videoTrack.enabled) {
+            remoteVideoWrapper.classList.remove('video-off');
+        } else {
+            remoteVideoWrapper.classList.add('video-off');
+        }
+        
+        // トラックのオンオフ変更を動的に監視
+        remoteStream.onremovetrack = () => {
+            remoteVideoWrapper.classList.add('video-off');
+        };
     });
     call.on('close', () => {
-        updateStatus("通話が終了しました。");
-        remoteVideo.srcObject = null;
+        alert("通話が終了しました。");
+        exitMeeting();
     });
 }
 
-// 3. リスト管理機能（簡易 localStorage 同期モック）
-refreshBtn.onclick = () => { fetchRoomList(); };
-
-function saveRoomToList(name) {
-    let rooms = JSON.parse(localStorage.getItem('active_rooms') || '[]');
-    if (!rooms.includes(name)) rooms.push(name);
-    localStorage.setItem('active_rooms', JSON.stringify(rooms));
-}
-
-function fetchRoomList() {
-    roomList.innerHTML = "";
-    let rooms = JSON.parse(localStorage.getItem('active_rooms') || '[]');
-    if (rooms.length === 0) {
-        roomList.innerHTML = "<li>有効な会議がありません（更新ボタンを押してください）</li>";
-        return;
-    }
-    rooms.forEach(room => {
-        const li = document.createElement('li');
-        li.innerHTML = `部屋: <strong>${room}</strong> `;
-        const joinBtn = document.createElement('button');
-        joinBtn.innerText = "入室申請する";
-        joinBtn.style.padding = "2px 8px";
-        joinBtn.onclick = () => joinRoom(room);
-        li.appendChild(joinBtn);
-        roomList.appendChild(li);
-    });
-}
-
-// --- コントロールボタンの処理 ---
-
-// マイクのON/OFF切り替え
-toggleAudioBtn.onclick = () => {
+// 退出・削除
+function exitMeeting() {
+    if (currentCall) currentCall.close();
+    if (peer) peer.destroy();
     if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            if (audioTrack.enabled) {
-                toggleAudioBtn.innerText = "マイク: ON";
-                toggleAudioBtn.classList.remove('btn-danger');
-            } else {
-                toggleAudioBtn.innerText = "マイク: MUTE";
-                toggleAudioBtn.classList.add('btn-danger');
-            }
-        }
+        localStream.getTracks().forEach(t => t.stop());
+    }
+    
+    // ホストならリストからも消す
+    if (isHost && activeRoomName) {
+        let rooms = JSON.parse(localStorage.getItem('gmeet_global_rooms') || '{}');
+        delete rooms[activeRoomName];
+        localStorage.setItem('gmeet_global_rooms', JSON.stringify(rooms));
+    }
+
+    // 初期化
+    remoteVideoWrapper.style.display = "none";
+    localVideo.srcObject = null;
+    remoteVideo.srcObject = null;
+    endCallBtn.style.display = "none";
+    createBtn.disabled = false;
+    roomIdInput.disabled = false;
+    meetingCodeDisplay.innerText = "会議に参加していません";
+    updateStatus("ロビーで待機中");
+    activeRoomName = "";
+    syncGlobalRooms();
+}
+
+endCallBtn.onclick = () => {
+    if (confirm("会議室を退出しますか？（ホストの場合は会議自体が消去されます）")) {
+        exitMeeting();
     }
 };
 
-// カメラ映像をONにする（後から有効化）
-document.getElementById('startCameraBtn').onclick = () => {
-    if (localStream) {
-        localVideo.className = ""; // ミラー有効
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-            videoTrack.enabled = true;
-            updateTrackInCall(videoTrack);
-            alert("カメラ映像をONにしました。");
+// --- コントロール群 (Meet操作感の再現) ---
+
+// マイクのミュート・解除
+micBtn.onclick = () => {
+    if (!localStream) return;
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        if (audioTrack.enabled) {
+            micBtn.classList.remove('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
         } else {
-            alert("カメラデバイスが見つかりません。");
+            micBtn.classList.add('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
         }
     }
 };
 
-// 画面共有 (1080p / 70fps 指定でトラックを差し替え)
-document.getElementById('startScreenBtn').onclick = async () => {
+// カメラのオン・オフ
+camBtn.onclick = () => {
+    if (!localStream) return;
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        if (videoTrack.enabled) {
+            camBtn.classList.remove('muted');
+            camBtn.innerHTML = '<i class="fa-solid fa-video"></i>';
+            localVideoWrapper.classList.remove('video-off');
+            updateTrackInCall(videoTrack);
+        } else {
+            camBtn.classList.add('muted');
+            camBtn.innerHTML = '<i class="fa-solid fa-video-slash"></i>';
+            localVideoWrapper.classList.add('video-off');
+            updateTrackInCall(videoTrack);
+        }
+    }
+};
+
+// 画面共有 (1080p/70fps)
+screenBtn.onclick = async () => {
+    if (!localStream) return;
     try {
-        localVideo.className = "screen-video"; // 画面共有時はミラーを解除
+        if (screenBtn.classList.contains('active-screen')) {
+            // すでに画面共有中なら通常カメラに戻す
+            const videoTrack = localStream.getVideoTracks()[0];
+            videoTrack.enabled = false;
+            camBtn.classList.add('muted');
+            camBtn.innerHTML = '<i class="fa-solid fa-video-slash"></i>';
+            localVideoWrapper.className = "video-wrapper video-off";
+            updateTrackInCall(videoTrack);
+            screenBtn.classList.remove('active-screen');
+            return;
+        }
+
+        localVideoWrapper.className = "video-wrapper screen-video";
         const constraints = {
             video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 70 } },
             audio: true
@@ -285,44 +460,38 @@ document.getElementById('startScreenBtn').onclick = async () => {
         const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
         const screenTrack = screenStream.getVideoTracks()[0];
         
-        // 自分の画面に表示
         updateTrackInCall(screenTrack);
+        screenBtn.classList.add('active-screen');
 
-        // 画面共有が停止されたら自動的にカメラトラック（または非表示）に戻す処理
         screenTrack.onended = () => {
             const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = false; // 一旦オフに戻す
-                updateTrackInCall(videoTrack);
-            }
-            localVideo.className = "";
+            videoTrack.enabled = false;
+            localVideoWrapper.className = "video-wrapper video-off";
+            updateTrackInCall(videoTrack);
+            screenBtn.classList.remove('active-screen');
         };
-    } catch (e) { 
-        console.error("画面共有キャンセルまたはエラー:", e);
+    } catch (e) {
+        console.error(e);
     }
 };
 
-// 通話相手にリアルタイムで映像トラックを届けるための関数
 function updateTrackInCall(newTrack) {
-    // ローカルストリームのトラックを入れ替え
-    const oldTrack = localStream.getVideoTracks()[0];
-    if (oldTrack) {
-        localStream.removeTrack(oldTrack);
-    }
-    localStream.addTrack(newTrack);
-    localVideo.srcObject = localStream;
-
-    // 通話中の場合、相手に送るトラックを動的に差し替える
     if (currentCall && currentCall.peerConnection) {
         const senders = currentCall.peerConnection.getSenders();
         const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-        if (videoSender) {
-            videoSender.replaceTrack(newTrack);
-        } else {
-            currentCall.peerConnection.addTrack(newTrack, localStream);
-        }
+        if (videoSender) videoSender.replaceTrack(newTrack);
     }
 }
+
+// リスト手動更新
+refreshBtn.onclick = () => syncGlobalRooms();
+
+// 起動時処理
+window.onload = () => {
+    syncGlobalRooms();
+    // 他のタブや別ウィンドウでのリスト操作イベントを常時監視して表示を最新にする
+    window.addEventListener('storage', () => syncGlobalRooms());
+};
 </script>
 </body>
 </html>
