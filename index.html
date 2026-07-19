@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Google Meet Clone - Pure P2P Sync</title>
+    <title>Google Meet Clone - Global Pure P2P</title>
     <!-- PeerJS & FontAwesome -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -19,71 +19,91 @@
         .main-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         @media (min-width: 768px) { .main-container { flex-direction: row; } }
         
-        .lobby { 
-            width: 100%; max-height: 280px; background: #292a2d; border-bottom: 1px solid #3c4043; padding: 16px; 
-            display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
+        /* 🚪 ロビー画面（初期状態） */
+        .lobby-view {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            flex: 1; padding: 20px; gap: 24px; background: #202124; z-index: 20;
         }
-        @media (min-width: 768px) { .lobby { width: 360px; max-height: 100%; height: 100%; border-bottom: none; border-right: 1px solid #3c4043; padding: 24px; gap: 20px; } }
+        .lobby-panel-box {
+            background: #292a2d; border: 1px solid #3c4043; border-radius: 12px;
+            padding: 24px; width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+
+        /* 🎬 会議画面（参加後に切り替わる） */
+        .meeting-view { display: none; flex: 1; flex-direction: column; overflow: hidden; position: relative; }
+        @media (min-width: 768px) { .meeting-view { flex-direction: row; } }
+
+        /* ホスト用サイドバー */
+        .host-sidebar { 
+            width: 100%; max-height: 120px; background: #292a2d; border-bottom: 1px solid #3c4043; padding: 12px; 
+            display: none; flex-direction: column; gap: 8px; overflow-y: auto; z-index: 10;
+        }
+        @media (min-width: 768px) { .host-sidebar { width: 280px; max-height: 100%; height: 100%; border-bottom: none; border-right: 1px solid #3c4043; padding: 20px; } }
 
         h2 { font-size: 13px; font-weight: 500; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.5px; }
         .input-group { display: flex; flex-direction: column; gap: 6px; }
         .input-row { display: flex; gap: 8px; }
-        input, select { background: #3c4043; border: 1px solid #5f6368; color: #fff; padding: 8px 12px; border-radius: 4px; font-size: 14px; outline: none; flex: 1; }
+        input { background: #3c4043; border: 1px solid #5f6368; color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 14px; outline: none; flex: 1; }
         input:focus { border-color: #8ab4f8; }
         
-        button { background: #1a73e8; color: white; border: none; padding: 8px 14px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+        button { background: #1a73e8; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
         button:hover { background: #1557b0; }
-        .btn-secondary { background: #3c4043; }
-        .btn-secondary:hover { background: #4f5357; }
         .btn-success { background: #28a745; }
         .btn-success:hover { background: #218838; }
         .btn-danger { background: #ea4335; }
         .btn-danger:hover { background: #d93025; }
-        .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 20px; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 4px; }
 
         /* 🔔 参加申請通知エリア */
-        .request-panel { background: #f4b400; color: #000; padding: 10px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; display: flex; flex-direction: column; gap: 8px; }
+        .request-panel { background: #f4b400; color: #000; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 500; display: flex; flex-direction: column; gap: 8px; }
         .request-item { display: flex; justify-content: space-between; align-items: center; }
         .request-btns { display: flex; gap: 6px; }
 
         /* ビデオ画面エリア */
-        .video-grid-container { flex: 1; display: flex; flex-direction: column; background: #171717; position: relative; padding: 8px; overflow-y: auto; }
-        @media (min-width: 768px) { .video-grid-container { padding: 16px; } }
-
+        .video-grid-container { flex: 1; display: flex; flex-direction: column; background: #171717; position: relative; padding: 12px; overflow-y: auto; }
+        
         .status-bar { background: rgba(0,0,0,0.7); padding: 6px 12px; border-radius: 20px; position: absolute; top: 12px; left: 12px; font-size: 12px; color: #e8eaed; z-index: 5; display: flex; align-items: center; gap: 6px; }
         .status-dot { width: 8px; height: 8px; background: #f4b400; border-radius: 50%; }
         .status-dot.active { background: #00ea96; }
 
-        .video-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-items: center; justify-content: center; width: 100%; margin: 0 auto; }
-        @media (min-width: 768px) { .video-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; max-width: 1200px; } }
+        /* ビデオグリッドレイアウト */
+        .video-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: center; justify-content: center; width: 100%; margin: 0 auto; }
+        @media (min-width: 768px) { .video-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; } }
         
-        .video-wrapper { position: relative; background: #202124; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; width: 100%; }
+        /* 相手をクリックしたときの巨大化スタイル */
+        .video-grid.has-pinned .video-wrapper:not(.pinned) { display: none; }
+        .video-grid.has-pinned .video-wrapper.pinned { grid-column: 1 / -1; grid-row: 1 / -1; aspect-ratio: auto; height: 100%; }
+
+        .video-wrapper { position: relative; background: #202124; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; box-shadow: 0 4px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; width: 100%; cursor: pointer; transition: all 0.2s ease; }
+        
+        /* 通常は鏡効果(反転)。unmirror クラスがつくと反転解除 */
         video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        .screen-video video { transform: none; }
-        .user-name { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 11px; max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        video.unmirror { transform: scaleX(1); }
+
+        .user-name { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
         
-        .avatar-placeholder { position: absolute; font-size: 32px; color: #5f6368; display: none; }
-        @media (min-width: 768px) { .avatar-placeholder { font-size: 48px; } }
+        /* 🔄 カメラ映像のミラーリング（反転）を元に戻すボタン */
+        .mirror-btn { position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.6); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; z-index: 10; opacity: 0.7; }
+        .mirror-btn:hover { opacity: 1; background: #1a73e8; }
+
+        .avatar-placeholder { position: absolute; font-size: 36px; color: #5f6368; display: none; pointer-events: none; }
         .video-off .avatar-placeholder { display: block; }
         .video-off video { opacity: 0; }
 
+        /* コントロールバー */
         .controls-bar { height: 72px; background: #202124; border-top: 1px solid #3c4043; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
         @media (min-width: 768px) { .controls-bar { padding: 0 24px; height: 80px; } }
         
-        .left-controls { font-size: 12px; color: #e8eaed; display: none; min-width: 100px; }
-        @media (min-width: 768px) { .left-controls { display: block; font-size: 14px; min-width: 200px; } }
-        
-        .center-controls { display: flex; gap: 8px; margin: 0 auto; }
-        @media (min-width: 768px) { .center-controls { gap: 12px; margin: 0; } }
+        .left-controls { font-size: 13px; color: #e8eaed; min-width: 80px; }
+        .center-controls { display: flex; gap: 10px; }
         
         .icon-btn { width: 40px; height: 40px; border-radius: 50%; background: #3c4043; border: none; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         @media (min-width: 768px) { .icon-btn { width: 48px; height: 48px; font-size: 18px; } }
         .icon-btn.muted { background: #ea4335; }
         .btn-end-call { background: #ea4335; width: 56px; border-radius: 20px; }
-        @media (min-width: 768px) { .btn-end-call { width: 64px; border-radius: 24px; } }
         
-        .right-controls { display: flex; justify-content: flex-end; gap: 12px; color: #9aa0a6; font-size: 16px; min-width: 50px; }
-        @media (min-width: 768px) { .right-controls { min-width: 200px; font-size: 18px; } }
+        .right-controls { display: flex; justify-content: flex-end; gap: 8px; color: #9aa0a6; font-size: 16px; min-width: 80px; }
     </style>
 </head>
 <body>
@@ -91,51 +111,58 @@
     <header>
         <div class="logo">
             <i class="fa-solid fa-video"></i>
-            <span>Google Meet <strong>No-Login Online</strong></span>
+            <span>Google Meet <strong>Global Grid</strong></span>
         </div>
         <div class="time-display" id="clock">00:00</div>
     </header>
 
     <div class="main-container">
-        <!-- 操作サイドバー -->
-        <div class="lobby" id="lobbyPanel">
-            
-            <!-- 🏰 ① ホスト用：会議室作成 -->
-            <div class="input-group" id="hostBox">
-                <h2>ホストとして会議を開く</h2>
+        
+        <!-- 🚪 ロビー画面ビュー（初期表示） -->
+        <div class="lobby-view" id="lobbyView">
+            <div class="lobby-panel-box">
+                <h2>👑 ホストとして新しい会議を開く</h2>
                 <div class="input-row">
-                    <input type="text" id="hostRoomIdInput" placeholder="適当な部屋の英数字（例: room123）">
+                    <input type="text" id="hostRoomIdInput" placeholder="部屋ID（例: room999）">
                     <button id="createBtn"><i class="fa-solid fa-plus"></i> 部屋を作る</button>
                 </div>
             </div>
 
-            <!-- 👥 ② ゲスト用：部屋IDを入力して参加申請 -->
-            <div class="input-group" id="guestBox" style="margin-top: 10px;">
-                <h2>ゲストとして参加する</h2>
+            <div class="lobby-panel-box">
+                <h2>👤 ゲストとして既存の会議に入る</h2>
                 <div class="input-row">
-                    <input type="text" id="guestRoomIdInput" placeholder="ホストの部屋の英数字を入力">
-                    <button id="joinRequestBtn" class="btn-success"><i class="fa-solid fa-right-to-bracket"></i> 参加申請する</button>
+                    <input type="text" id="guestRoomIdInput" placeholder="ホストの部屋IDを入力">
+                    <button id="joinRequestBtn" class="btn-success"><i class="fa-solid fa-right-to-bracket"></i> 参加申請</button>
                 </div>
-            </div>
-
-            <!-- 🔔 ホスト用参加申請通知パネル -->
-            <div class="request-panel" id="approvalPanel" style="display:none; margin-top: 10px;">
-                <h2>⚠️ ゲストからの参加申請</h2>
-                <div id="requestList"></div>
             </div>
         </div>
 
-        <!-- ビデオ画面エリア -->
-        <div class="video-grid-container">
-            <div class="status-bar">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">待機中</span>
+        <!-- 🎬 会議画面ビュー（参加・許可後に自動表示） -->
+        <div class="meeting-view" id="meetingView">
+            <!-- ホスト専用サイドバー (申請通知用) -->
+            <div class="host-sidebar" id="hostSidebar">
+                <div class="request-panel" id="approvalPanel" style="display:none;">
+                    <h2>⚠️ 参加申請が届いています</h2>
+                    <div id="requestList"></div>
+                </div>
+                <div style="font-size:11px; color:#9aa0a6; text-align:center; margin-top:10px;">あなたはホストです</div>
             </div>
-            <div class="video-grid" id="videoGrid">
-                <div class="video-wrapper" id="localVideoWrapper">
-                    <i class="fa-solid fa-user avatar-placeholder"></i>
-                    <video id="localVideo" autoplay playsinline muted></video>
-                    <div class="user-name">あなた</div>
+
+            <!-- ビデオ配置エリア -->
+            <div class="video-grid-container">
+                <div class="status-bar">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">接続中...</span>
+                </div>
+                
+                <div class="video-grid" id="videoGrid">
+                    <!-- 自分の映像用ラッパー -->
+                    <div class="video-wrapper" id="localVideoWrapper" onclick="togglePinElement(this)">
+                        <button class="mirror-btn" title="映像の反転を直す" onclick="toggleMirror(event, 'localVideo')"><i class="fa-solid fa-arrows-left-right"></i></button>
+                        <i class="fa-solid fa-user avatar-placeholder"></i>
+                        <video id="localVideo" autoplay playsinline muted></video>
+                        <div class="user-name">あなた</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -147,79 +174,98 @@
         <div class="center-controls">
             <button class="icon-btn" id="micBtn"><i class="fa-solid fa-microphone"></i></button>
             <button class="icon-btn muted" id="camBtn"><i class="fa-solid fa-video-slash"></i></button>
-            <button class="icon-btn" id="screenBtn"><i class="fa-solid fa-desktop"></i></button>
             <button class="icon-btn btn-end-call" id="endCallBtn" style="display:none;"><i class="fa-solid fa-phone-slash"></i></button>
         </div>
         <div class="right-controls"><i class="fa-solid fa-users"></i> <span id="userCount">1</span></div>
     </div>
 
 <script>
+// 🌍 全世界通信対応：NAT越えのためのパブリックSTUNサーバー設定
+const peerConfig = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
+        ]
+    }
+};
+
 let peer = null, localStream = null;
 let currentRoomId = "";
 let isHost = false;
-let connectedPeers = {}; // シグナリング用のデータ接続 { peerId: dataConnection }
-let activeMediaCalls = {}; // 通話オブジェクトの管理
+let connectedPeers = {}; 
+let activeMediaCalls = {};
 
 const clockEl = document.getElementById('clock'), statusDot = document.getElementById('statusDot'), statusText = document.getElementById('statusText');
+const lobbyView = document.getElementById('lobbyView'), meetingView = document.getElementById('meetingView'), hostSidebar = document.getElementById('hostSidebar');
 const hostRoomIdInput = document.getElementById('hostRoomIdInput'), guestRoomIdInput = document.getElementById('guestRoomIdInput'), createBtn = document.getElementById('createBtn'), joinRequestBtn = document.getElementById('joinRequestBtn');
-const localVideo = document.getElementById('localVideo'), localVideoWrapper = document.getElementById('localVideoWrapper'), meetingCodeDisplay = document.getElementById('meetingCodeDisplay'), userCountEl = document.getElementById('userCount');
-const micBtn = document.getElementById('micBtn'), camBtn = document.getElementById('camBtn'), screenBtn = document.getElementById('screenBtn'), endCallBtn = document.getElementById('endCallBtn');
+const localVideo = document.getElementById('localVideo'), localVideoWrapper = document.getElementById('localVideoWrapper'), videoGrid = document.getElementById('videoGrid'), meetingCodeDisplay = document.getElementById('meetingCodeDisplay'), userCountEl = document.getElementById('userCount');
+const micBtn = document.getElementById('micBtn'), camBtn = document.getElementById('camBtn'), endCallBtn = document.getElementById('endCallBtn');
 const approvalPanel = document.getElementById('approvalPanel'), requestList = document.getElementById('requestList');
 
 setInterval(() => { clockEl.innerText = new Date().toTimeString().split(' ')[0].substring(0, 5); }, 1000);
 
 function updateStatus(text, isActive = false) { statusText.innerText = text; statusDot.className = isActive ? "status-dot active" : "status-dot"; }
 
+// 📱 スマホ特有のブラウザ制限を回避し、マイクとカメラを確実に初期化
 async function initLocalStream() {
     if (localStream) return true;
+    
+    // スマホでの動作を安定させるための標準的な制約オプション
+    const constraints = {
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    };
+
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        localStream.getVideoTracks().forEach(t => t.enabled = false);
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localStream.getVideoTracks().forEach(t => t.enabled = false); // 初期カメラはオフ
         localVideo.srcObject = localStream;
         localVideoWrapper.classList.add('video-off');
         return true;
     } catch (e) {
+        console.warn("カメラ付きストリームの取得に失敗。オーディオのみで再試行します", e);
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localVideo.srcObject = localStream;
             localVideoWrapper.classList.add('video-off');
             return true;
-        } catch (err) { alert("マイク/カメラの取得に失敗しました"); return false; }
+        } catch (err) {
+            alert("マイクまたはカメラの権限が拒否されたか、デバイスが見つかりません。設定を確認してください。");
+            return false;
+        }
     }
 }
 
-// 🏰 ホスト：指定のIDで部屋を開く
+// 🏰 ホスト：部屋作成
 createBtn.onclick = async () => {
     const roomId = hostRoomIdInput.value.trim();
-    if (!roomId) return alert("部屋ID（英数字）を入力してください");
+    if (!roomId) return alert("部屋IDを入力してください");
     if (!(await initLocalStream())) return;
 
     isHost = true;
     currentRoomId = roomId;
 
-    // 接頭辞をつけてPeerServer上で部屋IDが衝突するのを防ぐ
-    peer = new Peer("gmeet-host-" + roomId);
+    peer = new Peer("gmeet-global-" + roomId, peerConfig);
 
     peer.on('open', () => {
-        updateStatus(`部屋を開きました: ${roomId} (ゲストの申請待機中)`, true);
+        switchViewToMeeting(); // 会議画面へ移行
+        hostSidebar.style.display = "flex";
+        updateStatus(`待機中 (部屋ID: ${roomId})`, true);
         meetingCodeDisplay.innerText = roomId;
-        endCallBtn.style.display = "flex";
-        toggleInputs(true);
     });
 
     peer.on('error', (err) => {
-        if(err.type === 'unavailable-id') {
-            alert("その部屋IDは既に使われています。別のIDにしてください。");
-            exitMeeting();
-        } else { alert("エラーが発生しました: " + err.type); }
+        if(err.type === 'unavailable-id') alert("その部屋IDは使用されています");
+        else alert("通信エラー: " + err.type);
+        exitMeeting();
     });
 
-    // ゲストからのデータ接続（申請）または通話接続の受信
     peer.on('connection', (conn) => {
         conn.on('data', (data) => {
-            if (data.type === 'request-join') {
-                showApprovalUI(conn, data.peerId);
-            }
+            if (data.type === 'request-join') showApprovalUI(conn, data.peerId);
         });
     });
 
@@ -229,47 +275,40 @@ createBtn.onclick = async () => {
     });
 };
 
-// 👥 ゲスト：自分の意思で部屋IDを入れて「申請」する
+// 👥 ゲスト：参加申請
 joinRequestBtn.onclick = async () => {
     const roomId = guestRoomIdInput.value.trim();
-    if (!roomId) return alert("参加したい部屋のIDを入力してください");
+    if (!roomId) return alert("部屋IDを入力してください");
     if (!(await initLocalStream())) return;
 
     isHost = false;
     currentRoomId = roomId;
-    updateStatus("ホストに接続中...");
 
-    peer = new Peer(); // ゲストはランダムIDで作成
+    peer = new Peer(peerConfig); 
 
     peer.on('open', (myId) => {
+        switchViewToMeeting(); // 申請中画面として先に切り替える
+        updateStatus("ホストに申請を送っています...");
         meetingCodeDisplay.innerText = roomId;
-        endCallBtn.style.display = "flex";
-        toggleInputs(true);
 
-        // ホストへデータ通信用の接続をかける
-        const conn = peer.connect("gmeet-host-" + roomId);
+        const conn = peer.connect("gmeet-global-" + roomId);
         
         conn.on('open', () => {
-            updateStatus("参加申請を送信しました。ホストの許可を待っています...");
             conn.send({ type: 'request-join', peerId: myId });
         });
 
         conn.on('data', (data) => {
             if (data.type === 'approved') {
-                updateStatus(`接続完了 (部屋: ${roomId})`, true);
-                // 許可されたのでホストに通話をかける
-                const call = peer.call("gmeet-host-" + roomId, localStream);
-                handleMediaCall(call, "gmeet-host-" + roomId);
+                updateStatus(`接続完了`, true);
+                const call = peer.call("gmeet-global-" + roomId, localStream);
+                handleMediaCall(call, "gmeet-global-" + roomId);
             } else if (data.type === 'rejected') {
-                alert("ホストに参加を拒否されました。");
+                alert("ホストに入室を拒否されました。");
                 exitMeeting();
             }
         });
 
-        conn.on('close', () => {
-            updateStatus("ホストとの接続が切れました。");
-            exitMeeting();
-        });
+        conn.on('close', () => { exitMeeting(); });
     });
 
     peer.on('call', (call) => {
@@ -278,7 +317,13 @@ joinRequestBtn.onclick = async () => {
     });
 };
 
-// ホスト側の画面に参加申請ポップアップを表示
+// 画面を会議モードに切り替える関数
+function switchViewToMeeting() {
+    lobbyView.style.display = "none";
+    meetingView.style.display = "flex";
+    endCallBtn.style.display = "flex";
+}
+
 function showApprovalUI(conn, guestPeerId) {
     approvalPanel.style.display = "block";
     const div = document.createElement('div');
@@ -292,12 +337,9 @@ function showApprovalUI(conn, guestPeerId) {
         </div>
     `;
     requestList.appendChild(div);
-    
-    // データ接続を保持
     connectedPeers[guestPeerId] = conn;
 }
 
-// ホスト機能：許可または拒否ボタンが押されたとき
 window.processApproval = function(guestPeerId, isApproved) {
     const conn = connectedPeers[guestPeerId];
     const reqEl = document.getElementById(`req-${guestPeerId}`);
@@ -307,7 +349,6 @@ window.processApproval = function(guestPeerId, isApproved) {
     if (conn) {
         if (isApproved) {
             conn.send({ type: 'approved' });
-            // ホスト側からもゲストへ通話を相互開始できるように待機
         } else {
             conn.send({ type: 'rejected' });
             conn.close();
@@ -324,12 +365,16 @@ function handleMediaCall(call, remotePeerId) {
     wrapper.className = "video-wrapper video-off";
     wrapper.id = `video-${remotePeerId}`;
     
-    // 表示名の調整（ホストかゲストか）
-    const displayName = remotePeerId.includes("gmeet-host-") ? "ホスト" : `ゲスト (${remotePeerId.substring(0,4)})`;
+    // クリックされたら拡大するイベントリスナーを付与
+    wrapper.onclick = function() { togglePinElement(wrapper); };
     
+    const displayName = remotePeerId.includes("gmeet-global-") ? "ホスト" : `ゲスト (${remotePeerId.substring(0,4)})`;
+    const videoId = `video-el-${remotePeerId}`;
+
     wrapper.innerHTML = `
+        <button class="mirror-btn" title="映像の反転を直す" onclick="toggleMirror(event, '${videoId}')"><i class="fa-solid fa-arrows-left-right"></i></button>
         <i class="fa-solid fa-user avatar-placeholder"></i>
-        <video autoplay playsinline></video>
+        <video id="${videoId}" autoplay playsinline></video>
         <div class="user-name">${displayName}</div>
     `;
     videoGrid.appendChild(wrapper);
@@ -345,54 +390,69 @@ function handleMediaCall(call, remotePeerId) {
     updateUserCount();
 }
 
+// 相手をクリックしたときに最大化/解除するロジック
+function togglePinElement(element) {
+    if (element.classList.contains('pinned')) {
+        element.classList.remove('pinned');
+        videoGrid.classList.remove('has-pinned');
+    } else {
+        // 他のピンを解除
+        document.querySelectorAll('.video-wrapper').forEach(el => el.classList.remove('pinned'));
+        element.classList.add('pinned');
+        videoGrid.classList.add('has-pinned');
+    }
+}
+
+// 🔄 カメラ映像の左右反転（ミラー）を元に戻す/切り替えるボタンの処理
+window.toggleMirror = function(event, videoElementId) {
+    event.stopPropagation(); // 親要素の拡大クリックイベントを発動させない
+    const videoEl = document.getElementById(videoElementId);
+    if (videoEl) {
+        videoEl.classList.toggle('unmirror');
+    }
+};
+
 function removeVideoElement(id) {
     const el = document.getElementById(`video-${id}`);
-    if (el) el.remove();
+    if (el) {
+        if(el.classList.contains('pinned')) {
+            videoGrid.classList.remove('has-pinned');
+        }
+        el.remove();
+    }
     delete activeMediaCalls[id];
     updateUserCount();
 }
 
 function updateUserCount() { userCountEl.innerText = Object.keys(activeMediaCalls).length + 1; }
 
-function toggleInputs(disabled) {
-    hostRoomIdInput.disabled = disabled;
-    guestRoomIdInput.disabled = disabled;
-    createBtn.disabled = disabled;
-    joinRequestBtn.disabled = disabled;
-}
-
 function exitMeeting() {
-    // すべてのメディア通話を終了
-    Object.keys(activeMediaCalls).forEach(id => {
-        if (activeMediaCalls[id]) activeMediaCalls[id].close();
-        removeVideoElement(id);
-    });
+    Object.keys(activeMediaCalls).forEach(id => { if (activeMediaCalls[id]) activeMediaCalls[id].close(); removeVideoElement(id); });
     activeMediaCalls = {};
-
-    // すべてのデータ接続を終了
-    Object.keys(connectedPeers).forEach(id => {
-        if (connectedPeers[id]) connectedPeers[id].close();
-    });
+    Object.keys(connectedPeers).forEach(id => { if (connectedPeers[id]) connectedPeers[id].close(); });
     connectedPeers = {};
 
-    if (peer) {
-        peer.destroy();
-        peer = null;
-    }
-    
+    if (peer) { peer.destroy(); peer = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     
     localVideo.srcObject = null;
+    videoGrid.classList.remove('has-pinned');
+    localVideoWrapper.classList.remove('pinned');
+    
+    // 表示のリセット
     endCallBtn.style.display = "none";
     approvalPanel.style.display = "none";
-    requestList.innerHTML = "";
-    toggleInputs(false);
+    hostSidebar.style.display = "none";
+    meetingView.style.display = "none";
+    lobbyView.style.display = "flex";
+    
     meetingCodeDisplay.innerText = "未参加";
-    updateStatus("待機中");
     userCountEl.innerText = "1";
+    hostRoomIdInput.value = "";
+    guestRoomIdInput.value = "";
 }
 
-endCallBtn.onclick = () => { if (confirm("退室します加？")) exitMeeting(); };
+endCallBtn.onclick = () => { if (confirm("会議室から退室しますか？")) exitMeeting(); };
 
 micBtn.onclick = () => {
     if (!localStream) return;
