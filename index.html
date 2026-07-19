@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC P2P ミーティングツール</title>
+    <!-- PeerJSライブラリの読み込み -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #1e1e24; color: #fff; margin: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .box { background: #2a2a35; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #555; }
+        input { padding: 10px; border-radius: 4px; border: 1px solid #444; background: #333; color: white; width: 200px; }
+        video { width: 100%; max-width: 400px; background: #000; border-radius: 4px; margin-top: 10px; transform: scaleX(-1); }
+        .screen-video { transform: none; max-width: 100%; }
+        .flex { display: flex; gap: 20px; flex-wrap: wrap; }
+        .status { color: #ffc107; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>WebRTC P2P ミーティング (HTML Only)</h1>
+    <div id="status" class="status">状態: 準備中...</div>
+
+    <!-- 1. 会議の作成と参加 -->
+    <div class="box">
+        <h2>1. 会議を始める / 参加する</h2>
+        <div class="flex">
+            <div>
+                <input type="text" id="roomIdInput" placeholder="会議部屋名（一意な名前）">
+                <button id="createBtn">会議を開いて待つ（ホスト）</button>
+            </div>
+            <div style="border-left: 1px solid #444; padding-left: 20px;">
+                <button id="refreshBtn">会議リストを更新</button>
+                <ul id="roomList" style="margin-top: 10px; padding-left: 20px;"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 通話・共有コントロール -->
+    <div class="box" id="meetingControls" style="display:none;">
+        <h2>2. コントロール</h2>
+        <p>あなたのID: <span id="myIdDisplay" style="color:#00ffff;"></span></p>
+        <div class="flex">
+            <button id="startAudioBtn">マイクON</button>
+            <button id="startCameraBtn">カメラ映像共有</button>
+            <button id="startScreenBtn">画面共有 (1080p/70fps)</button>
+        </div>
+    </div>
+
+    <!-- 3. 映像表示エリア -->
+    <div class="box">
+        <h2>3. 映像・音声</h2>
+        <div class="flex">
+            <div>
+                <h3>自分の映像/音声</h3>
+                <video id="localVideo" autoplay playsinline muted></video>
+            </div>
+            <div>
+                <h3>相手の映像/音声</h3>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 無料のパブリックPeerJSサーバーを利用
+// ※静的HTMLだけで動かすため、簡易的に部屋名をIDのプレフィックスとして運用します
+const ROOM_PREFIX = "git-meet-room-";
+let peer = null;
+let localStream = null;
+let currentCall = null;
+let isHost = false;
+
+const statusDiv = document.getElementById('status');
+const roomIdInput = document.getElementById('roomIdInput');
+const createBtn = document.getElementById('createBtn');
+const roomList = document.getElementById('roomList');
+const refreshBtn = document.getElementById('refreshBtn');
+const meetingControls = document.getElementById('meetingControls');
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+
+// 初期化
+window.onload = () => {
+    updateStatus("会議名を入力して「会議を開く」か、リストから参加してください。");
+    fetchRoomList();
+};
+
+function updateStatus(text) {
+    statusDiv.innerText = `状態: ${text}`;
+}
+
+// 1. 会議を開く（ホスト側）
+createBtn.onclick = () => {
+    const roomName = roomIdInput.value.trim();
+    if (!roomName) return alert("会議部屋名を入力してください");
+
+    isHost = true;
+    const peerId = ROOM_PREFIX + roomName;
+
+    // Peerオブジェクトの作成（IDを指定してホストとして待受）
+    peer = new Peer(peerId);
+
+    peer.on('open', (id) => {
+        updateStatus(`会議「${roomName}」を開きました。参加者を待っています...`);
+        document.getElementById('myIdDisplay').innerText = id;
+        meetingControls.style.style = "block";
+        createBtn.disabled = true;
+        roomIdInput.disabled = true;
+        
+        // 簡易的にローカルストレージを使ってリストを共有（同じPC内の別タブ用テスト用）
+        // 本来は共通のロビーサーバーが必要ですが、HTMLのみのためlocalStorageで模擬
+        saveRoomToList(roomName);
+    });
+
+    peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+            alert("その会議名は既に使われています。別の名前を試してください。");
+        } else {
+            console.error(err);
+        }
+        updateStatus("エラーが発生しました。");
+    });
+
+    // 参加者からの接続（コール）を待ち受ける
+    peer.on('call', (call) => {
+        // 【重要】ホストの許可機能
+        const accept = confirm(`参加希望者 (${call.peer}) から接続要求があります。許可しますか？`);
+        if (!accept) {
+            call.close();
+            return;
+        }
+
+        updateStatus("通話が許可されました。接続中...");
+        currentCall = call;
+
+        // ホスト側が既にストリームを持っていればそれを送る、無ければ空のストリームを作る
+        if (!localStream) {
+            // 最低限マイクだけでも初期化を試みる
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                localStream = stream;
+                localVideo.srcObject = stream;
+                call.answer(localStream);
+            }).catch(() => {
+                // メディアデバイスが拒否された場合はストリームなしで応答
+                call.answer();
+            });
+        } else {
+            call.answer(localStream);
+        }
+
+        handleCallStream(call);
+    });
+};
+
+// 2. リスト機能（簡易モック）
+refreshBtn.onclick = () => { fetchRoomList(); };
+
+function saveRoomToList(name) {
+    let rooms = JSON.parse(localStorage.getItem('active_rooms') || '[]');
+    if (!rooms.includes(name)) rooms.push(name);
+    localStorage.setItem('active_rooms', JSON.stringify(rooms));
+}
+
+function fetchRoomList() {
+    roomList.innerHTML = "";
+    let rooms = JSON.parse(localStorage.getItem('active_rooms') || '[]');
+    if (rooms.length === 0) {
+        roomList.innerHTML = "<li>有効な会議がありません（更新ボタンを押してください）</li>";
+        return;
+    }
+    rooms.forEach(room => {
+        const li = document.createElement('li');
+        li.innerHTML = `部屋: <strong>${room}</strong> `;
+        const joinBtn = document.createElement('button');
+        joinBtn.innerText = "入室申請する";
+        joinBtn.style.padding = "2px 8px";
+        joinBtn.onclick = () => joinRoom(room);
+        li.appendChild(joinBtn);
+        roomList.appendChild(li);
+    });
+}
+
+// 3. 会議に参加する（ゲスト側）
+function joinRoom(roomName) {
+    isHost = false;
+    // ゲストはランダムなIDでPeerを作成
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+        updateStatus(`ホストに接続申請を送っています...承認を待ってください。`);
+        document.getElementById('myIdDisplay').innerText = id;
+        meetingControls.style.display = "block";
+
+        // まずマイクを取得して発信
+        navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+            .catch(() => navigator.mediaDevices.getUserMedia({ audio: true })) // カメラがなければマイクだけ
+            .then(stream => {
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // ホストのIDに向けて発信
+                const hostPeerId = ROOM_PREFIX + roomName;
+                const call = peer.call(hostPeerId, localStream);
+                currentCall = call;
+                handleCallStream(call);
+            }).catch(err => {
+                alert("マイクの起動に失敗しました。");
+                console.error(err);
+            });
+    });
+}
+
+// ストリームの受け取り処理
+function handleCallStream(call) {
+    call.on('stream', (remoteStream) => {
+        updateStatus("通話中");
+        remoteVideo.srcObject = remoteStream;
+    });
+    call.on('close', () => {
+        updateStatus("通話が終了しました。");
+        remoteVideo.srcObject = null;
+    });
+}
+
+// --- メディアコントロール機能 ---
+
+// マイクON
+document.getElementById('startAudioBtn').onclick = async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        addTracksToLocalStream(stream);
+        alert("マイクを設定しました。");
+    } catch (e) { alert("マイクの取得に失敗しました。"); }
+};
+
+// カメラON
+document.getElementById('startCameraBtn').onclick = async () => {
+    try {
+        localVideo.className = ""; // ミラー効果あり
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        addTracksToLocalStream(stream);
+    } catch (e) { alert("カメラの取得に失敗しました。"); }
+};
+
+// 画面共有 (1080p / 70fps 指定)
+document.getElementById('startScreenBtn').onclick = async () => {
+    try {
+        localVideo.className = "screen-video"; // ミラー効果を解除
+        // ユーザーの要望スペックを設定
+        const constraints = {
+            video: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 70 } // 70fps要求
+            },
+            audio: true
+        };
+        const stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        addTracksToLocalStream(stream);
+    } catch (e) { 
+        alert("画面共有の開始に失敗したか、キャンセルされました。"); 
+        console.error(e);
+    }
+};
+
+// 既存の配信ストリームにトラックを追加・置換して相手に送る
+function addTracksToLocalStream(newStream) {
+    if (!localStream) {
+        localStream = newStream;
+    } else {
+        // 既存のトラックを停止して入れ替え
+        newStream.getTracks().forEach(track => {
+            const existingTrack = localStream.getTracks().find(t => t.kind === track.kind);
+            if (existingTrack) {
+                existingTrack.stop();
+                localStream.removeTrack(existingTrack);
+            }
+            localStream.addTrack(track);
+        });
+    }
+    localVideo.srcObject = localStream;
+
+    // 通話中の場合、相手に新しいトラック（映像/音声）を再ネゴシエーション（または再発信）
+    if (currentCall && currentCall.peerConnection) {
+        const senders = currentCall.peerConnection.getSenders();
+        localStream.getTracks().forEach(track => {
+            const sender = senders.find(s => s.track && s.track.kind === track.kind);
+            if (sender) {
+                sender.replaceTrack(track);
+            } else {
+                currentCall.peerConnection.addTrack(track, localStream);
+            }
+        });
+    }
+}
+</script>
+</body>
+</html>
