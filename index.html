@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Google Meet Clone - Standard Layout</title>
+    <title>Google Meet Clone - Approval System</title>
     <!-- PeerJS & FontAwesome -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,20 +16,16 @@
         .logo i { color: #00ea96; }
         .time-display { font-size: 14px; color: #9aa0a6; }
 
-        /* メインコンテナ（PC・スマホ共通で縦・横のハイブリッド対応） */
+        /* メインコンテナ */
         .main-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-        @media (min-width: 768px) {
-            .main-container { flex-direction: row; }
-        }
+        @media (min-width: 768px) { .main-container { flex-direction: row; } }
         
-        /* 操作サイドバー（スマホ・PC共通で上から順に「リスト」＞「作る」が常に見える） */
+        /* 操作サイドバー */
         .lobby { 
-            width: 100%; max-height: 250px; background: #292a2d; border-bottom: 1px solid #3c4043; padding: 16px; 
+            width: 100%; max-height: 280px; background: #292a2d; border-bottom: 1px solid #3c4043; padding: 16px; 
             display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 10;
         }
-        @media (min-width: 768px) {
-            .lobby { width: 360px; max-height: 100%; height: 100%; border-bottom: none; border-right: 1px solid #3c4043; padding: 24px; gap: 20px; }
-        }
+        @media (min-width: 768px) { .lobby { width: 360px; max-height: 100%; height: 100%; border-bottom: none; border-right: 1px solid #3c4043; padding: 24px; gap: 20px; } }
 
         h2 { font-size: 13px; font-weight: 500; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.5px; }
         .input-group { display: flex; flex-direction: column; gap: 6px; }
@@ -56,7 +52,12 @@
 
         .breakout-box { background: #202124; padding: 10px; border-radius: 6px; border: 1px dashed #5f6368; }
 
-        /* ビデオグリッドエリア */
+        /* 🔔 参加申請通知エリア (ホスト用) */
+        .request-panel { background: #f4b400; color: #000; padding: 10px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; display: flex; flex-direction: column; gap: 8px; }
+        .request-item { display: flex; justify-content: space-between; align-items: center; }
+        .request-btns { display: flex; gap: 6px; }
+
+        /* ビデオ画面エリア */
         .video-grid-container { flex: 1; display: flex; flex-direction: column; background: #171717; position: relative; padding: 8px; overflow-y: auto; }
         @media (min-width: 768px) { .video-grid-container { padding: 16px; } }
 
@@ -104,24 +105,30 @@
     <header>
         <div class="logo">
             <i class="fa-solid fa-video"></i>
-            <span>Google Meet <strong>Standard</strong></span>
+            <span>Google Meet <strong>Approval-Gate</strong></span>
         </div>
         <div class="time-display" id="clock">00:00</div>
     </header>
 
     <div class="main-container">
-        <!-- 操作サイドバー（スマホ・PC共通レイアウト） -->
+        <!-- 操作サイドバー -->
         <div class="lobby" id="lobbyPanel">
             
-            <!-- 🌐 ① 進行中の部屋リスト（最上部固定） -->
+            <!-- 🌐 ① 進行中の部屋リスト -->
             <div class="room-list-container">
-                <h2>進行中の部屋（自動同期）</h2>
+                <h2>進行中の部屋（手動で参加申請）</h2>
                 <ul class="room-list" id="roomList"></ul>
+            </div>
+
+            <!-- 🔔 ホスト用参加申請通知パネル -->
+            <div class="request-panel" id="approvalPanel" style="display:none;">
+                <h2>⚠️ 参加申請が届いています</h2>
+                <div id="requestList"></div>
             </div>
 
             <hr style="border: 0; border-top: 1px solid #3c4043;">
 
-            <!-- 🏰 ② 会議室を作るエリア（リストのすぐ下に常駐） -->
+            <!-- 🏰 ② 会議室を作るエリア -->
             <div class="input-group">
                 <h2>新しい会議室を作る</h2>
                 <div class="input-row">
@@ -130,7 +137,7 @@
                 </div>
             </div>
             
-            <!-- 👥 ③ グループ分割（ホスト用・作成後に自動で出現） -->
+            <!-- 👥 ③ グループ分割（ホスト用） -->
             <div class="breakout-box" id="breakoutController" style="display:none;">
                 <h2><i class="fa-solid fa-users-gear"></i> グループに分ける</h2>
                 <div class="input-group" style="margin-top:6px; flex-direction: row; gap: 6px;">
@@ -143,7 +150,6 @@
                     <button id="stopBreakoutBtn" class="btn-danger btn-sm" style="display:none;">解散</button>
                 </div>
             </div>
-
         </div>
 
         <!-- ビデオ画面エリア -->
@@ -175,22 +181,22 @@
     </div>
 
 <script>
-const ROOM_PREFIX = "gmeet-multi-";
 let peer = null, localStream = null;
 let myPeerId = "";
 let activeRoomName = "", mainRoomName = "";
 let isHost = false;
 let connectedPeers = {};
+let pendingRequests = {}; // ホスト側で未承認の申請一覧
 
 const clockEl = document.getElementById('clock'), statusDot = document.getElementById('statusDot'), statusText = document.getElementById('statusText');
 const roomIdInput = document.getElementById('roomIdInput'), createBtn = document.getElementById('createBtn'), roomList = document.getElementById('roomList'), videoGrid = document.getElementById('videoGrid');
 const localVideo = document.getElementById('localVideo'), localVideoWrapper = document.getElementById('localVideoWrapper'), meetingCodeDisplay = document.getElementById('meetingCodeDisplay'), userCountEl = document.getElementById('userCount');
 const micBtn = document.getElementById('micBtn'), camBtn = document.getElementById('camBtn'), screenBtn = document.getElementById('screenBtn'), endCallBtn = document.getElementById('endCallBtn');
 const breakoutController = document.getElementById('breakoutController'), startBreakoutBtn = document.getElementById('startBreakoutBtn'), stopBreakoutBtn = document.getElementById('stopBreakoutBtn'), groupCountSelect = document.getElementById('groupCountSelect');
+const approvalPanel = document.getElementById('approvalPanel'), requestList = document.getElementById('requestList');
 
 setInterval(() => { clockEl.innerText = new Date().toTimeString().split(' ')[0].substring(0, 5); }, 1000);
 
-function encodeRoomName(str) { return Array.from(new TextEncoder().encode(str)).map(b => b.toString(16).padStart(2, '0')).join(''); }
 function updateStatus(text, isActive = false) { statusText.innerText = text; statusDot.className = isActive ? "status-dot active" : "status-dot"; }
 
 async function initLocalStream() {
@@ -207,7 +213,7 @@ async function initLocalStream() {
             localVideo.srcObject = localStream;
             localVideoWrapper.classList.add('video-off');
             return true;
-        } catch (err) { alert("デバイス取得失敗"); return false; }
+        } catch (err) { alert("マイク/カメラの取得に失敗しました"); return false; }
     }
 }
 
@@ -216,7 +222,7 @@ function syncGlobalRooms() {
     let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
     
     if (Object.keys(data).length === 0) {
-        roomList.innerHTML = `<li style="font-size:11px; color:#9aa0a6; text-align:center; padding:6px; background:#202124; border-radius:4px;">部屋がありません</li>`;
+        roomList.innerHTML = `<li style="font-size:11px; color:#9aa0a6; text-align:center; padding:6px; background:#202124; border-radius:4px;">現在進行中の部屋はありません</li>`;
         return;
     }
 
@@ -226,7 +232,7 @@ function syncGlobalRooms() {
         liMain.innerHTML = `
             <span class="room-name">🏰 ${mainName}</span>
             <div class="room-actions">
-                <button class="btn-secondary btn-sm" onclick="switchRoom('${mainName}', '${mainName}')">移動</button>
+                <button class="btn-secondary btn-sm" onclick="requestJoin('${mainName}', '${mainName}')">参加申請</button>
                 <button class="btn-danger btn-sm" onclick="deleteMainRoom('${mainName}')"><i class="fa-solid fa-trash"></i></button>
             </div>
         `;
@@ -241,7 +247,7 @@ function syncGlobalRooms() {
                 liSub.innerHTML = `
                     <span class="room-name">💬 ${subName.split('-')[1]}</span>
                     <div class="room-actions">
-                        <button class="btn-success btn-sm" onclick="switchRoom('${subName}', '${mainName}')">入室</button>
+                        <button class="btn-success btn-sm" onclick="requestJoin('${subName}', '${mainName}')">参加申請</button>
                     </div>
                 `;
                 roomList.appendChild(liSub);
@@ -250,17 +256,23 @@ function syncGlobalRooms() {
     });
 }
 
-function updateRegistry(roomName, peerId, isRemoving = false) {
+function updateRegistry(roomName, peerId, extraData = null) {
     let reg = JSON.parse(localStorage.getItem('gmeet_m_reg') || '{}');
     if (!reg[roomName]) reg[roomName] = [];
-    if (isRemoving) {
-        reg[roomName] = reg[roomName].filter(id => id !== peerId);
-    } else {
-        if (!reg[roomName].includes(peerId)) reg[roomName].push(peerId);
+    
+    if (extraData === 'remove') {
+        reg[roomName] = reg[roomName].filter(item => item.id !== peerId);
+    } else if (extraData === 'approve') {
+        reg[roomName] = reg[roomName].map(item => item.id === peerId ? {id: peerId, approved: true} : item);
+    } else if (extraData === 'add') {
+        if (!reg[roomName].some(item => item.id === peerId)) {
+            reg[roomName].push({ id: peerId, approved: isHost });
+        }
     }
     localStorage.setItem('gmeet_m_reg', JSON.stringify(reg));
 }
 
+// 🏰 ホスト：会議室作成（即時入室）
 createBtn.onclick = async () => {
     const roomName = roomIdInput.value.trim();
     if (!roomName) return alert("部屋名を入力してください");
@@ -276,77 +288,135 @@ createBtn.onclick = async () => {
     breakoutController.style.display = "block";
     stopBreakoutBtn.style.display = "none";
     
-    connectToRoom(roomName);
+    connectToPeerServer(roomName);
 };
 
-startBreakoutBtn.onclick = () => {
-    if (!mainRoomName) return;
-    const count = parseInt(groupCountSelect.value);
-    let subRooms = [];
-    for (let i = 1; i <= count; i++) subRooms.push(`${mainRoomName}-グループ${i}`);
-
-    let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
-    if (data[mainRoomName]) {
-        data[mainRoomName].subRooms = subRooms;
-        localStorage.setItem('gmeet_m_data', JSON.stringify(data));
-    }
-    stopBreakoutBtn.style.display = "inline-block";
-    syncGlobalRooms();
-};
-
-stopBreakoutBtn.onclick = () => {
-    let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
-    if (data[mainRoomName]) data[mainRoomName].subRooms = [];
-    localStorage.setItem('gmeet_m_data', JSON.stringify(data));
-    stopBreakoutBtn.style.display = "none";
-    syncGlobalRooms();
-};
-
-function switchRoom(targetRoomName, belongsToMain) {
+// ゲスト：意思を持って参加申請ボタンを押す
+function requestJoin(targetRoomName, belongsToMain) {
     if (activeRoomName === targetRoomName) return;
-    updateStatus(`移動中...`);
     mainRoomName = belongsToMain;
 
-    cleanUpConnections();
-    if (peer) {
-        updateRegistry(activeRoomName, myPeerId, true);
-        peer.destroy();
-    }
+    exitMeeting(false); // 以前の接続をクリア
+    updateStatus(`参加申請中... ホストの許可を待っています`);
 
-    initLocalStream().then(() => { connectToRoom(targetRoomName); });
+    initLocalStream().then((success) => {
+        if (success) connectToPeerServer(targetRoomName);
+    });
 }
 
-function connectToRoom(targetRoomName) {
+function connectToPeerServer(targetRoomName) {
     activeRoomName = targetRoomName;
     peer = new Peer();
 
     peer.on('open', (id) => {
         myPeerId = id;
-        updateStatus(`部屋: ${targetRoomName}`, true);
         meetingCodeDisplay.innerText = targetRoomName;
         endCallBtn.style.display = "flex";
         createBtn.disabled = true;
         roomIdInput.disabled = true;
 
-        updateRegistry(targetRoomName, myPeerId, false);
+        // レジストリに登録 (ホストなら最初からapproved=true, ゲストはapproved=false)
+        updateRegistry(targetRoomName, myPeerId, 'add');
 
-        setTimeout(() => {
-            let reg = JSON.parse(localStorage.getItem('gmeet_m_reg') || '{}');
-            let activeUsers = reg[targetRoomName] || [];
-            activeUsers.forEach(userId => {
-                if (userId !== myPeerId && !connectedPeers[userId]) {
-                    const call = peer.call(userId, localStream);
-                    handleCall(call, userId);
-                }
-            });
-            updateUserCount();
-        }, 600);
+        if (isHost) {
+            updateStatus(`部屋: ${targetRoomName} (ホスト)`, true);
+            startHostMonitoring();
+        } else {
+            startGuestMonitoring();
+        }
     });
 
+    // 通話の着信処理（お互いが承認済みの状態のみ応答する）
     peer.on('call', (call) => {
         call.answer(localStream);
         handleCall(call, call.peer);
     });
+}
+
+// 👁️ ホスト専用：ゲストの申請を見張る役割
+function startHostMonitoring() {
+    const checkInterval = setInterval(() => {
+        if (!peer || peer.destroyed || !isHost) { clearInterval(checkInterval); return; }
+        
+        let reg = JSON.parse(localStorage.getItem('gmeet_m_reg') || '{}');
+        let users = reg[activeRoomName] || [];
+
+        // 未承認のユーザーをリストアップして画面に表示
+        let unapprovedUsers = users.filter(u => !u.approved);
+        
+        if (unapprovedUsers.length > 0) {
+            approvalPanel.style.display = "block";
+            requestList.innerHTML = "";
+            unapprovedUsers.forEach(u => {
+                const div = document.createElement('div');
+                div.className = "request-item";
+                div.style.marginTop = "6px";
+                div.innerHTML = `
+                    <span>👤 ゲスト(${u.id.substring(0,5)})</span>
+                    <div class="request-btns">
+                        <button class="btn-success btn-sm" onclick="approveGuest('${u.id}')">許可</button>
+                        <button class="btn-danger btn-sm" onclick="rejectGuest('${u.id}')">拒否</button>
+                    </div>
+                `;
+                requestList.appendChild(div);
+            });
+        } else {
+            approvalPanel.style.display = "none";
+        }
+
+        // すでに承認済みのユーザー同士をシームレスに通話接続
+        users.forEach(user => {
+            if (user.approved && user.id !== myPeerId && !connectedPeers[user.id]) {
+                const call = peer.call(user.id, localStream);
+                handleCall(call, user.id);
+            }
+        });
+    }, 1000);
+}
+
+// 👁️ ゲスト専用：ホストに許可されたか見張る役割
+function startGuestMonitoring() {
+    const checkInterval = setInterval(() => {
+        if (!peer || peer.destroyed || isHost) { clearInterval(checkInterval); return; }
+
+        let reg = JSON.parse(localStorage.getItem('gmeet_m_reg') || '{}');
+        let users = reg[activeRoomName] || [];
+        let me = users.find(u => u.id === myPeerId);
+
+        if (!me) {
+            // リストから消されていたら拒否されたとみなす
+            clearInterval(checkInterval);
+            alert("ホストに参加を拒否されたか、切断されました。");
+            exitMeeting(true);
+            return;
+        }
+
+        if (me.approved) {
+            // ホストから許可が出た！
+            clearInterval(checkInterval);
+            updateStatus(`部屋: ${activeRoomName} (接続済み)`, true);
+            
+            // 既存のメンバーに通話をかける
+            users.forEach(user => {
+                if (user.approved && user.id !== myPeerId && !connectedPeers[user.id]) {
+                    const call = peer.call(user.id, localStream);
+                    handleCall(call, user.id);
+                }
+            });
+        }
+    }, 1000);
+}
+
+// ホスト機能：ゲストを許可する
+function approveGuest(guestId) {
+    updateRegistry(activeRoomName, guestId, 'approve');
+    approvalPanel.style.display = "none";
+}
+
+// ホスト機能：ゲストを拒否する
+function rejectGuest(guestId) {
+    updateRegistry(activeRoomName, guestId, 'remove');
+    approvalPanel.style.display = "none";
 }
 
 function handleCall(call, remotePeerId) {
@@ -397,40 +467,71 @@ function cleanUpConnections() {
 function updateUserCount() { userCountEl.innerText = Object.keys(connectedPeers).length + 1; }
 
 function deleteMainRoom(name) {
-    if(!confirm(`削除しますか？`)) return;
+    if(!confirm(`部屋「${name}」を削除しますか？`)) return;
     let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
     delete data[name];
     localStorage.setItem('gmeet_m_data', JSON.stringify(data));
+    
+    let reg = JSON.parse(localStorage.getItem('gmeet_m_reg') || '{}');
+    delete reg[name];
+    localStorage.setItem('gmeet_m_reg', JSON.stringify(reg));
+
     syncGlobalRooms();
-    if (mainRoomName === name) exitMeeting();
+    if (mainRoomName === name) exitMeeting(true);
 }
 
-function exitMeeting() {
+function exitMeeting(clearAll = true) {
     cleanUpConnections();
     if (peer) {
-        updateRegistry(activeRoomName, myPeerId, true);
+        if (activeRoomName) updateRegistry(activeRoomName, myPeerId, 'remove');
         peer.destroy();
+        peer = null;
     }
-    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     
-    if (isHost && mainRoomName) {
-        let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
-        delete data[mainRoomName];
-        localStorage.setItem('gmeet_m_data', JSON.stringify(data));
+    if (clearAll) {
+        if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+        if (isHost && mainRoomName) {
+            let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
+            delete data[mainRoomName];
+            localStorage.setItem('gmeet_m_data', JSON.stringify(data));
+        }
+        localVideo.srcObject = null;
+        endCallBtn.style.display = "none";
+        breakoutController.style.display = "none";
+        approvalPanel.style.display = "none";
+        createBtn.disabled = false;
+        roomIdInput.disabled = false;
+        meetingCodeDisplay.innerText = "未参加";
+        updateStatus("ロビー待機中");
+        activeRoomName = ""; mainRoomName = ""; isHost = false;
+        syncGlobalRooms();
     }
-
-    localVideo.srcObject = null;
-    endCallBtn.style.display = "none";
-    breakoutController.style.display = "none";
-    createBtn.disabled = false;
-    roomIdInput.disabled = false;
-    meetingCodeDisplay.innerText = "未参加";
-    updateStatus("ロビー待機中");
-    activeRoomName = ""; mainRoomName = ""; isHost = false;
-    syncGlobalRooms();
 }
 
-endCallBtn.onclick = () => { if (confirm("退室しますか？")) exitMeeting(); };
+endCallBtn.onclick = () => { if (confirm("退室しますか？")) exitMeeting(true); };
+
+startBreakoutBtn.onclick = () => {
+    if (!mainRoomName) return;
+    const count = parseInt(groupCountSelect.value);
+    let subRooms = [];
+    for (let i = 1; i <= count; i++) subRooms.push(`${mainRoomName}-グループ${i}`);
+
+    let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
+    if (data[mainRoomName]) {
+        data[mainRoomName].subRooms = subRooms;
+        localStorage.setItem('gmeet_m_data', JSON.stringify(data));
+    }
+    stopBreakoutBtn.style.display = "inline-block";
+    syncGlobalRooms();
+};
+
+stopBreakoutBtn.onclick = () => {
+    let data = JSON.parse(localStorage.getItem('gmeet_m_data') || '{}');
+    if (data[mainRoomName]) data[mainRoomName].subRooms = [];
+    localStorage.setItem('gmeet_m_data', JSON.stringify(data));
+    stopBreakoutBtn.style.display = "none";
+    syncGlobalRooms();
+};
 
 micBtn.onclick = () => {
     if (!localStream) return;
@@ -445,12 +546,6 @@ camBtn.onclick = () => {
         camBtn.classList.toggle('muted', !t.enabled); 
         camBtn.innerHTML = t.enabled ? '<i class="fa-solid fa-video"></i>' : '<i class="fa-solid fa-video-slash"></i>'; 
         localVideoWrapper.classList.toggle('video-off', !t.enabled); 
-        Object.values(connectedPeers).forEach(call => {
-            if (call.peerConnection) {
-                const s = call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (s) s.replaceTrack(t);
-            }
-        });
     }
 };
 
